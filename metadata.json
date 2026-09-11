@@ -1,0 +1,6 @@
+{
+  "name": "TaskMate - AI-Powered Task Management Assistant",
+  "description": "Intelligent personal productivity workspace and AI assistant to converse, plan, organize, and complete tasks seamlessly.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
