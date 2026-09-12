@@ -38,7 +38,7 @@ class Settings(BaseSettings):
 
     # LLM Settings (Nemotron runtime agent - Phase 6)
     LLM_PROVIDER: str = "nemotron"
-    LLM_MODEL: str = "nvidia/nemotron-4-340b-instruct"
+    LLM_MODEL: str = "nvidia/nemotron-3.5-lightning-30b-a3b"
     LLM_API_KEY: str = ""
     NVIDIA_API_KEY: str = ""
     LLM_BASE_URL: str = "https://integrate.api.nvidia.com/v1"

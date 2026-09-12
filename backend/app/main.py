@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from backend.app.api.routes_chat import router as chat_router
 from backend.app.api.routes_health import router as health_router
 from backend.app.core.config import get_settings
 
@@ -37,10 +38,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount Health Check Routes
-# Supported at both `/health` and `/api/health` for compatibility
+# Mount Routes
+# Health check supported at both `/health` and `/api/health`
 app.include_router(health_router)
 app.include_router(health_router, prefix="/api")
+
+# Conversational Agent Loop route mounted at `/api/chat`
+app.include_router(chat_router)
 
 
 @app.get("/", include_in_schema=False)

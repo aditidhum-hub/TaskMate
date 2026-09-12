@@ -95,7 +95,7 @@ class LLMService:
         self._custom_client = http_client
 
         # Resolution of configuration parameters
-        self.model = self.settings.LLM_MODEL or "nvidia/nemotron-4-340b-instruct"
+        self.model = self.settings.LLM_MODEL or "nvidia/nemotron-3.5-lightning-30b-a3b"
         self.base_url = (self.settings.effective_base_url or "https://integrate.api.nvidia.com/v1").rstrip("/")
         self.api_key = self.settings.effective_api_key
         self.timeout = getattr(self.settings, "LLM_TIMEOUT", 30.0)

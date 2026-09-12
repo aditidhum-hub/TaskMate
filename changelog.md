@@ -10,7 +10,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Planned
 
-- Phase 7–8: Agent loop orchestration and `/api/chat` FastAPI endpoint.
+- Phase 9: React frontend component alignment with production API contracts.
+
+---
+
+## [0.12.0] — 2026-09-12
+
+### Added
+
+- **Phase 8: FastAPI API Layer (`backend/app/api/`, `backend/app/models/`):**
+  - Implemented `POST /api/chat` route in `backend/app/api/routes_chat.py` backed by `TaskMateAgent` and the Nemotron agent loop.
+  - Defined Pydantic validation schemas in `backend/app/models/chat.py` (`ChatRequest` and `ChatResponse`) with whitespace-trimmed validation and extra field rejection.
+  - Enforced cryptographic Firebase ID token verification dependency (`get_current_user`) requiring valid Bearer tokens for all `/api/chat` interactions.
+  - Mounted `chat_router` in `backend/app/main.py` with CORS middleware configured for frontend origins.
+  - Added structured diagnostics logging latency, user context, tool calls count, and success status.
+  - Authored Google Colab experimentation notebook `notebooks/06_api_testing.ipynb`.
+  - Created automated test suite in `backend/tests/api/test_chat.py` with 16 unit, validation, auth, and CORS tests (146/146 total backend tests passing).
+  - Manually verified all endpoints live on `127.0.0.1:8000` (`GET /health`, unauthenticated `/api/chat`, invalid token rejection, input validation, and authenticated chat execution).
+  - Clean linter verification with 0 errors (`ruff check backend/`).
+
+---
+
+## [0.11.0] — 2026-09-12
+
+### Added
+
+- **Phase 7: Agent Loop Orchestration (Nemotron):**
+  - Implemented `TaskMateAgent` in `backend/app/agent/agent.py` orchestrating the full iterative agent reasoning loop: Prompt -> Nemotron -> Tool Selection -> Observation Feedback -> Truthful Synthesis.
+  - Defined `TASKMATE_SYSTEM_PROMPT` in `backend/app/agent/prompts.py` enforcing mandatory tool usage for math/dates, strict grounding in tool observations, zero result fabrication, and honest error reporting.
+  - Supported multi-step tool execution (e.g. resolve relative date via `get_date_time` then invoke `create_task`) with a configurable `max_iterations` safety bound (default: 5) to prevent infinite loops.
+  - Implemented `_sanitize_response_content` stripping `<think>...</think>` tags to prevent raw chain-of-thought leakage in end-user responses.
+  - Enforced multi-tenant isolation and security guards: verified `user_id` injection on all `TaskTool` calls, parameter validation, and prompt forgery neutralization.
+  - Created Google Colab experimentation notebook `notebooks/05_agent_loop.ipynb`.
+  - Authored comprehensive test suite in `backend/tests/agent/test_agent_loop.py` with 20 unit and security tests covering create, list, get, update, complete, delete, calculate, datetime, multi-step chaining, no-tool conversation, ambiguous request handling, tool failures, and LLM error resilience (130/130 total backend tests passing).
+  - Clean linter verification with 0 errors (`ruff check backend/`).
 
 ---
 

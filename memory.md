@@ -210,8 +210,6 @@ To ensure total transparency and avoid false assumptions, the codebase distingui
 - **Exploratory Dev Server (`server.ts`):** Prototype Express server running Vite in middleware mode. *(Marked as superseded; to be decommissioned upon FastAPI backend setup).*
 
 ### 8.3 Pending Production Features ⏳
-- **Phase 7:** Agent loop implementation in `agent/agent.py` orchestrating Nemotron with approved tools.
-- **Phase 8:** FastAPI API layer exposing `GET /health` and `POST /api/chat` backed by the Nemotron agent loop.
 - **Phase 9:** Production alignment of React frontend components to backend API contracts.
 - **Phase 10:** Integration of React frontend with production FastAPI backend (`POST /api/chat`).
 - **Phases 11–14:** Comprehensive Pytest/Vitest suites, security reviews, performance tuning, and production deployment.
@@ -237,11 +235,11 @@ Phase 5:  Task Tool [COMPLETED]
     │
 Phase 6:  LLM Connection and Structured Tool Calling (Nemotron) [COMPLETED]
     │
-Phase 7:  Agent Loop (Nemotron) [NEXT UP]
+Phase 7:  Agent Loop (Nemotron) [COMPLETED]
     │
-Phase 8:  FastAPI API Layer (Nemotron-backed endpoint)
+Phase 8:  FastAPI API Layer (Nemotron-backed endpoint) [COMPLETED]
     │
-Phase 9:  React Frontend
+Phase 9:  React Frontend [NEXT UP]
     │
 Phase 10: Frontend + Backend Integration (React → FastAPI → Nemotron → Tools)
     │
