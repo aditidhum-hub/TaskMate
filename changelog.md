@@ -10,14 +10,105 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Planned
 
-- Implement the production Python + FastAPI backend application under `backend/app/` according to the approved phase plan (`TaskMate_03_PHASES.md`).
-- Integrate Firebase Authentication and implement backend Firebase ID token verification middleware.
-- Implement the Cloud Firestore-backed task service with user-scoped storage (`users/{user_id}/tasks/{task_id}`).
-- Connect Nemotron as the runtime agent model through the configurable `LLMService` abstraction layer.
-- Connect the React frontend with the FastAPI `/api/chat` endpoint and verify end-to-end task workflows.
-- Execute validation notebooks (`notebooks/01_*.ipynb` through `07_*.ipynb`) in Google Colab.
-- Author and run automated unit and integration test suites using `pytest` for the backend and `vitest` for the frontend.
-- Perform security and authorization validation prior to production deployment preparation.
+- Phase 7–8: Agent loop orchestration and `/api/chat` FastAPI endpoint.
+
+---
+
+## [0.10.0] — 2026-09-12
+
+### Added
+
+- **Phase 6: LLM Connection and Structured Tool Calling (Nemotron):**
+  - Implemented `LLMService` in `backend/app/services/llm_service.py` connecting to NVIDIA Nemotron via OpenAI-compatible endpoint (`{LLM_BASE_URL}/chat/completions`).
+  - Added configuration support for `NVIDIA_API_KEY`, `LLM_API_KEY`, `LLM_BASE_URL`, `NVIDIA_BASE_URL`, and `LLM_TIMEOUT` in `backend/app/core/config.py`.
+  - Defined OpenAI-compatible function calling schemas in `backend/app/agent/schemas.py` for all 6 task operations (`create_task`, `list_tasks`, `get_task`, `update_task`, `complete_task`, `delete_task`) and utility tools (`calculate`, `get_date_time`).
+  - Implemented `ToolRegistry` in `backend/app/agent/tool_registry.py` providing schema discovery, argument validation, and safe dispatching to `TaskTool` and utility functions.
+  - Enforced strict tenant isolation: `user_id` is hidden from schemas exposed to the LLM, and any `user_id` injected into tool arguments by the LLM is automatically stripped. `TaskTool` is bound exclusively to the authenticated caller's verified `user_id`.
+  - Implemented two-turn conversational flow in `LLMService.run_conversation_turn` handling tool execution and natural-language synthesis.
+  - Authored Google Colab experimentation notebooks: `notebooks/02_llm_connection.ipynb` and `notebooks/03_tool_calling.ipynb`.
+  - Created comprehensive test suite in `backend/tests/agent/test_agent_tools.py` with 20 automated unit and security tests covering all 16 required verification points (110/110 total backend tests passing).
+  - Verified linter cleanliness with zero warnings or errors (`ruff check backend/`).
+
+---
+
+## [0.9.0] — 2026-09-12
+
+### Added
+
+- **Phase 5: Task Tool (`backend/app/tools/`):**
+  - Implemented agent-facing `TaskTool` in `backend/app/tools/task_tool.py` connecting the agent loop to `TaskService`.
+  - Injected verified `user_id` context upon initialization (`TaskTool(user_id=...)`), preventing LLM prompt forgery and enforcing multi-tenant isolation.
+  - Implemented all 6 approved agent task operations: `create_task`, `list_tasks`, `get_task`, `update_task`, `complete_task`, and `delete_task`.
+  - Standardized structured dictionary returns with `success: bool`, formatted messages, payload data, and descriptive errors for LLM observations.
+  - Implemented dynamic operation dispatcher `execute(operation: str, **kwargs)`.
+  - Authored comprehensive test suite in `backend/tests/unit/test_task_tool.py` (17 tests) covering all operations, error handling, input validation, and multi-tenant security isolation (90/90 total backend tests passing).
+  - Clean linter verification with zero errors (`ruff check backend/`).
+
+---
+
+## [0.8.0] — 2026-09-12
+
+### Added
+
+- **Phase 4: Calculator and Date/Time Tools (`backend/app/tools/`):**
+  - Implemented safe AST-based arithmetic evaluator in `backend/app/tools/calculator.py` adhering to strict **Zero `eval()` Policy**.
+  - Supported arithmetic operations: `+`, `-`, `*`, `/`, `//`, `%`, `**`, `^` (power alias), unary `+`/`-`, and parentheses.
+  - Whitelisted safe mathematical functions: `sqrt`, `round` (1 or 2 arguments), `abs`, `ceil`, `floor`.
+  - Enforced code injection protection: blocks `__import__`, `eval`, `exec`, `open`, variable lookups, and attribute access.
+  - Handled division by zero (`ZeroDivisionError`) and syntax errors gracefully.
+  - Implemented deterministic Date/Time tool in `backend/app/tools/datetime_tool.py` providing real-time system clock grounding.
+  - Parsed natural language relative dates: `"today"`, `"now"`, `"tomorrow"`, `"yesterday"`, `"in N days"`, `"in N weeks"`, `"in N hours"`, `"next <weekday>"`, and explicit ISO dates (`YYYY-MM-DD`).
+  - Added optional `anchor` parameter for deterministic testing.
+  - Authored comprehensive test suites in `backend/tests/unit/test_calculator.py` (24 tests) and `backend/tests/unit/test_datetime_tool.py` (11 tests) — all 35 tests passing (73/73 total backend tests passing).
+  - Linter verification clean with zero errors (`ruff check backend/`).
+
+---
+
+## [0.7.0] — 2026-09-12
+
+### Added
+
+- **Phase 3: Data Models and Task Service (`backend/`, `firebase/`):**
+  - Implemented Pydantic models in `backend/app/models/task.py`: `TaskCreate`, `TaskUpdate`, `TaskResponse`, `TaskPriority` enum (`low`, `medium`, `high`), and `TaskStatus` enum (`pending`, `in_progress`, `completed`).
+  - Added strict domain validation: string trimming, non-empty title constraints (1–200 characters), description limits (<=2000 characters), and ISO-8601 UTC timestamp generation.
+  - Implemented `get_firestore_client()` helper in `backend/app/services/firebase.py` for accessing Firestore client from the initialized Firebase Admin app.
+  - Implemented user-scoped `TaskService` in `backend/app/services/task_service.py` strictly partitioning all queries, mutations, and deletions under `users/{user_id}/tasks/{task_id}`.
+  - Implemented complete CRUD lifecycle: `create_task`, `list_tasks` (with optional status and priority filters), `get_task`, `update_task`, `complete_task`, and `delete_task`.
+  - Added parameter guards enforcing non-empty `user_id` and `task_id` with `ValueError`.
+  - Configured Firestore security rules in `firebase/firestore.rules` enforcing `request.auth.uid == userId` for all task document operations.
+  - Configured composite index definitions in `firebase/firestore.indexes.json` for status and priority with created_at ordering.
+  - Created comprehensive unit test suite in `backend/tests/unit/test_task_service.py` with 25 passing tests verifying models, full CRUD operations, and multi-tenant security isolation (38/38 total backend tests passing).
+
+
+### Added
+
+- **Phase 2: Firebase Setup and Authentication Foundation (`backend/`, `frontend/`):**
+  - Integrated `firebase-admin>=6.5.0` into backend requirements.
+  - Implemented Firebase Admin SDK initialization in `backend/app/services/firebase.py` with support for service account credentials, environment variables, ADC, and offline fallback.
+  - Implemented cryptographic JWT token verification in `backend/app/core/security.py` (`verify_firebase_token`) deriving authenticated `user_id` strictly from token claims (`decoded_token["uid"]`).
+  - Implemented FastAPI security dependency `get_current_user` in `backend/app/api/dependencies.py` extracting Bearer tokens from `Authorization` header and raising HTTP 401 on missing, expired, or malformed credentials.
+  - Author comprehensive pytest suite in `backend/tests/api/test_auth_dependency.py` covering valid tokens, expired tokens, malformed tokens, non-Bearer schemes, and live token mocks (8/8 tests passing).
+  - Updated client authentication foundation in `frontend/src/services/authService.ts` to support `getIdToken()` for Bearer token transmission and Google authentication foundation.
+  - Created Google Colab validation notebook `notebooks/04_firebase_connection.ipynb` validating Firebase Admin SDK and token verification.
+
+---
+
+## [0.5.0] — 2026-09-12
+
+### Added
+
+- **Phase 1: Production Python Backend Environment & Skeleton (`backend/`):**
+  - Initialized Python 3.11+ modular monolith application structure under `backend/app/`.
+  - Configured production dependencies in `backend/requirements.txt` (`fastapi`, `uvicorn[standard]`, `pydantic`, `pydantic-settings`, `httpx`).
+  - Configured dev & test dependencies in `backend/requirements-dev.txt` (`pytest`, `pytest-asyncio`, `ruff`).
+  - Implemented centralized environment settings in `backend/app/core/config.py` using Pydantic `BaseSettings` with support for `.env` loading, CORS configuration, and placeholder configuration for future phases.
+  - Implemented `GET /health` and `GET /api/health` probes in `backend/app/api/routes_health.py` returning status, service name, and ISO-8601 UTC timestamp.
+  - Built FastAPI application entry point in `backend/app/main.py` with CORS middleware, lifespan lifecycle handler, and OpenAPI documentation endpoints (`/docs`, `/redoc`, `/openapi.json`).
+  - Created automated backend test suite in `backend/tests/api/test_health.py` verifying `/health`, `/api/health`, and `/` routes.
+  - Created development launch runners for PowerShell (`scripts/dev_backend.ps1`) and Bash (`scripts/dev_backend.sh`).
+  - Created Google Colab validation notebook `notebooks/01_environment_setup.ipynb` testing Python 3.11+ runtime, dependencies, config loading, and health endpoint response.
+  - Created backend environment variable template `backend/.env.example`.
+  - Updated `.gitignore` with Python virtual environments, caches, and test artifacts.
 
 ---
 

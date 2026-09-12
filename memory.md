@@ -188,6 +188,12 @@ To ensure total transparency and avoid false assumptions, the codebase distingui
 ### 8.1 Completed Production Features ✅
 - **Documentation & Specifications (Phase 0):** `TaskMate_01_PRD.md` (complete PRD) and `TaskMate_03_PHASES.md` (15-phase blueprint).
 - **Persistent AI Context:** `decisions.md` (architectural decision log with historical superseded entries), `rules.md` (operational rules for coding and security), and `changelog.md` (chronological release log).
+- **Project Environment and Skeleton (Phase 1):** Production Python 3.11+ backend initialized under `backend/app/` with FastAPI application shell, centralized configuration (`backend/app/core/config.py` using Pydantic `BaseSettings`), health check endpoint (`backend/app/api/routes_health.py`), development runner scripts (`scripts/dev_backend.ps1`, `scripts/dev_backend.sh`), Google Colab setup validation notebook (`notebooks/01_environment_setup.ipynb`), and automated pytest suite (`backend/tests/api/test_health.py`).
+- **Firebase Setup and Authentication Foundation (Phase 2):** Official Firebase Web SDK (`firebase`) integrated into `frontend/` with client configuration (`frontend/src/services/firebase.ts`) and real auth methods in `frontend/src/services/authService.ts`. Firebase Admin SDK initialization in `backend/app/services/firebase.py`, cryptographically verified JWT token extraction via `backend/app/core/security.py` (zero synthetic token bypass), FastAPI `get_current_user` dependency in `backend/app/api/dependencies.py`, 10 automated auth pytest tests in `backend/tests/api/test_auth_dependency.py`, and Colab validation notebook `notebooks/04_firebase_connection.ipynb`.
+- **Data Models and Task Service (Phase 3):** Python Pydantic models (`backend/app/models/task.py`: `TaskCreate`, `TaskUpdate`, `TaskResponse`, `TaskPriority`, `TaskStatus`) and Firestore task service (`backend/app/services/task_service.py`) executing full user-scoped CRUD against `users/{user_id}/tasks/{task_id}`. Security boundaries established via `firebase/firestore.rules` and `firebase/firestore.indexes.json`. 25 automated unit and tenant-isolation pytests passing in `backend/tests/unit/test_task_service.py` (38/38 total backend tests passing).
+- **Calculator and Date/Time Tools (Phase 4):** Pure Python, LLM-independent utility tools. AST-based arithmetic evaluator with Zero `eval()` Policy (`backend/app/tools/calculator.py`) supporting `+`, `-`, `*`, `/`, `//`, `%`, `**`, `^`, parentheses, `sqrt`, `round`, `abs`, `ceil`, `floor`, with code injection defense. Deterministic relative/absolute temporal resolver (`backend/app/tools/datetime_tool.py`) parsing `"today"`, `"tomorrow"`, `"yesterday"`, `"next <weekday>"`, `"in N days/weeks/hours"`, and ISO dates. 35 automated unit tests in `backend/tests/unit/test_calculator.py` and `backend/tests/unit/test_datetime_tool.py` (73/73 total backend tests passing).
+- **Task Tool (Phase 5):** Agent-facing tool wrapper (`backend/app/tools/task_tool.py`) connecting agent actions to `TaskService`. Injects authenticated caller `user_id` context into all 6 approved operations (`create_task`, `list_tasks`, `get_task`, `update_task`, `complete_task`, `delete_task`), dynamic dispatcher (`execute`), and returns structured JSON responses suitable for LLM reasoning. 17 unit and multi-tenant security pytests passing in `backend/tests/unit/test_task_tool.py` (90/90 total backend tests passing).
+- **LLM Connection and Structured Tool Calling (Phase 6):** Provider-agnostic `LLMService` in `backend/app/services/llm_service.py` connecting to NVIDIA Nemotron via OpenAI-compatible Chat Completions endpoint. Structured tool schemas in `backend/app/agent/schemas.py`, dynamic dispatcher and argument validator in `backend/app/agent/tool_registry.py` enforcing strict tenant isolation (stripping LLM-supplied `user_id` and binding `TaskTool` to authenticated security context). Colab validation notebooks `notebooks/02_llm_connection.ipynb` and `notebooks/03_tool_calling.ipynb`. 20 automated unit/security pytests in `backend/tests/agent/test_agent_tools.py` (110/110 total backend tests passing).
 
 ### 8.2 Completed Frontend Prototype / Mock Features 🎨
 *(Active in local repository, pending connection to production FastAPI backend)*
@@ -204,12 +210,6 @@ To ensure total transparency and avoid false assumptions, the codebase distingui
 - **Exploratory Dev Server (`server.ts`):** Prototype Express server running Vite in middleware mode. *(Marked as superseded; to be decommissioned upon FastAPI backend setup).*
 
 ### 8.3 Pending Production Features ⏳
-- **Phase 1:** Setup of `backend/` directory, Python 3.11 virtual environment, `requirements.txt`, and basic FastAPI skeleton (`backend/app/main.py`).
-- **Phase 2:** Live Firebase project configuration, service account integration, and backend JWT verification dependency (`dependencies.py`).
-- **Phase 3:** Python Pydantic models (`models/task.py`) and Firestore task service (`services/task_service.py`).
-- **Phase 4:** Python implementations of Calculator Tool (`tools/calculator.py`) and Date/Time Tool (`tools/datetime_tool.py`).
-- **Phase 5:** Python implementation of Task Tool (`tools/task_tool.py`) wiring agent actions to Firestore task service.
-- **Phase 6:** Nemotron LLM connection and structured tool calling via provider-agnostic `services/llm_service.py`.
 - **Phase 7:** Agent loop implementation in `agent/agent.py` orchestrating Nemotron with approved tools.
 - **Phase 8:** FastAPI API layer exposing `GET /health` and `POST /api/chat` backed by the Nemotron agent loop.
 - **Phase 9:** Production alignment of React frontend components to backend API contracts.
@@ -225,19 +225,19 @@ Development must strictly follow the sequence established in `TaskMate_03_PHASES
 ```text
 Phase 0:  Documentation & Repository Preparation [COMPLETED]
     │
-Phase 1:  Project Environment and Skeleton [NEXT UP]
+Phase 1:  Project Environment and Skeleton [COMPLETED]
     │
-Phase 2:  Firebase Setup and Authentication Foundation
+Phase 2:  Firebase Setup and Authentication Foundation [COMPLETED]
     │
-Phase 3:  Data Models and Task Service
+Phase 3:  Data Models and Task Service [COMPLETED]
     │
-Phase 4:  Calculator and Date/Time Tools
+Phase 4:  Calculator and Date/Time Tools [COMPLETED]
     │
-Phase 5:  Task Tool
+Phase 5:  Task Tool [COMPLETED]
     │
-Phase 6:  LLM Connection and Structured Tool Calling (Nemotron)
+Phase 6:  LLM Connection and Structured Tool Calling (Nemotron) [COMPLETED]
     │
-Phase 7:  Agent Loop (Nemotron)
+Phase 7:  Agent Loop (Nemotron) [NEXT UP]
     │
 Phase 8:  FastAPI API Layer (Nemotron-backed endpoint)
     │
