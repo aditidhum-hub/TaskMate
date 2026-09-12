@@ -8,11 +8,9 @@ import {
   User,
   CheckCircle2,
   Trash2,
-  Clock,
   ArrowRight,
   ListTodo,
   Calendar,
-  Layers,
 } from 'lucide-react';
 
 export const AiAssistantPanel: React.FC = () => {
@@ -23,7 +21,6 @@ export const AiAssistantPanel: React.FC = () => {
     isAiThinking,
     aiStatusText,
     clearChat,
-    toggleTaskStatus,
   } = useApp();
 
   const [input, setInput] = useState('');
@@ -65,7 +62,7 @@ export const AiAssistantPanel: React.FC = () => {
       className="flex-1 flex flex-col h-full bg-white rounded-2xl border border-stone-200/80 shadow-xs overflow-hidden"
     >
       {/* AI Header with Greeting & Suggested Chips */}
-      <div className="p-5 sm:p-6 border-b border-stone-100 bg-gradient-to-b from-stone-50/70 to-white">
+      <div className="p-4 sm:p-5 border-b border-stone-100 bg-gradient-to-b from-stone-50/70 to-white">
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
@@ -76,7 +73,7 @@ export const AiAssistantPanel: React.FC = () => {
                 {getGreeting()}
               </h2>
             </div>
-            <p className="text-xs sm:text-sm text-stone-500 mt-1">
+            <p className="text-xs text-stone-500 mt-0.5">
               What would you like to get done today?
             </p>
           </div>
@@ -92,7 +89,7 @@ export const AiAssistantPanel: React.FC = () => {
         </div>
 
         {/* Suggested Prompt Chips */}
-        <div className="mt-4 flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+        <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
           {SUGGESTED_PROMPT_CHIPS.map((chip, idx) => (
             <button
               key={idx}
@@ -237,8 +234,8 @@ export const AiAssistantPanel: React.FC = () => {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Premium Chat Message Composer */}
-      <div className="p-4 border-t border-stone-200/80 bg-white">
+      {/* Chat Message Composer */}
+      <div className="p-3.5 sm:p-4 border-t border-stone-200/80 bg-white">
         <form onSubmit={handleSend} className="relative flex items-center gap-2">
           <input
             ref={inputRef}
@@ -247,7 +244,7 @@ export const AiAssistantPanel: React.FC = () => {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={isAiThinking}
-            placeholder="Ask TaskMate anything..."
+            placeholder="Ask TaskMate anything... (e.g. 'Create a task to study Python tomorrow')"
             className="w-full pl-4 pr-12 py-3 text-xs sm:text-sm bg-stone-100/70 hover:bg-stone-100 focus:bg-white text-stone-900 rounded-xl border border-stone-200/80 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 focus:outline-hidden transition-all placeholder:text-stone-400"
           />
 

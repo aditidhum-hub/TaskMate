@@ -72,10 +72,18 @@ export const DashboardView: React.FC = () => {
             </button>
             <button
               type="button"
-              onClick={() => setActiveNavView('workspace')}
-              className="px-4 py-2 rounded-xl bg-indigo-700/60 hover:bg-indigo-700 text-white text-xs font-semibold border border-white/20 transition-all cursor-pointer flex items-center gap-1.5"
+              onClick={() => setActiveNavView('kanban')}
+              className="px-4 py-2 rounded-xl bg-indigo-700/70 hover:bg-indigo-700 text-white text-xs font-semibold border border-white/20 transition-all cursor-pointer flex items-center gap-1.5"
             >
-              <span>Open Two-Column Workspace</span>
+              <Layers className="w-3.5 h-3.5" />
+              <span>Open Kanban Board</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveNavView('workspace')}
+              className="px-4 py-2 rounded-xl bg-indigo-800/60 hover:bg-indigo-800 text-white text-xs font-semibold border border-white/20 transition-all cursor-pointer flex items-center gap-1.5"
+            >
+              <span>Two-Column Workspace</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>

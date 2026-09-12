@@ -8,6 +8,7 @@ import {
   Bot,
   ListTodo,
   Columns2,
+  Layers,
   Bell,
   User,
   LogOut,
@@ -51,6 +52,7 @@ export const Header: React.FC = () => {
 
   const navItems: { id: NavView; label: string; icon: React.ReactNode }[] = [
     { id: 'workspace', label: 'Workspace', icon: <Columns2 className="w-4 h-4" /> },
+    { id: 'kanban', label: 'Kanban', icon: <Layers className="w-4 h-4" /> },
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-4 h-4" /> },
     { id: 'assistant', label: 'AI Assistant', icon: <Bot className="w-4 h-4" /> },
     { id: 'tasks', label: 'Tasks', icon: <ListTodo className="w-4 h-4" /> },
@@ -102,7 +104,7 @@ export const Header: React.FC = () => {
                 key={item.id}
                 type="button"
                 onClick={() => setActiveNavView(item.id)}
-                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer ${
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer ${
                   isActive
                     ? 'bg-white text-indigo-700 shadow-xs'
                     : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/50'
@@ -110,7 +112,7 @@ export const Header: React.FC = () => {
               >
                 {item.icon}
                 <span>{item.label}</span>
-                {item.id === 'tasks' && tasks.length > 0 && (
+                {(item.id === 'tasks' || item.id === 'kanban') && tasks.length > 0 && (
                   <span
                     className={`text-[10px] px-1.5 py-0.2 rounded-full font-medium ${
                       isActive
@@ -235,6 +237,17 @@ export const Header: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => {
+                      setActiveNavView('kanban');
+                      setIsProfileOpen(false);
+                    }}
+                    className="w-full px-4 py-2 text-left hover:bg-stone-50 flex items-center gap-2 cursor-pointer"
+                  >
+                    <Layers className="w-3.5 h-3.5 text-stone-500" />
+                    Kanban Board
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
                       signInDemoUser();
                       setIsProfileOpen(false);
                     }}
@@ -265,20 +278,20 @@ export const Header: React.FC = () => {
       </div>
 
       {/* Mobile Navigation bar */}
-      <div className="md:hidden border-t border-stone-200 px-4 py-2 bg-stone-50 flex items-center justify-around text-xs">
+      <div className="md:hidden border-t border-stone-200 px-3 py-2 bg-stone-50 flex items-center justify-around text-xs overflow-x-auto">
         {navItems.map((item) => (
           <button
             key={item.id}
             type="button"
             onClick={() => setActiveNavView(item.id)}
-            className={`flex items-center gap-1.5 py-1 px-2.5 rounded-lg font-semibold transition-colors cursor-pointer ${
+            className={`flex items-center gap-1 py-1 px-2 rounded-lg font-semibold transition-colors cursor-pointer shrink-0 ${
               activeNavView === item.id
                 ? 'bg-white text-indigo-700 shadow-xs'
                 : 'text-stone-600 hover:text-stone-900'
             }`}
           >
             {item.icon}
-            <span className="text-[11px]">{item.label}</span>
+            <span className="text-[10px]">{item.label}</span>
           </button>
         ))}
       </div>

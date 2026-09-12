@@ -1,11 +1,15 @@
-import { Task, TaskPriority } from '../types';
+import { Task, TaskPriority, ChatResponsePayload } from '../types';
 import { taskService } from './taskService';
+import { apiClient } from './apiClient';
 
 export interface ChatResponse {
   response: string;
-  tool_used?: string;
-  created_task?: Task;
+  tool_used?: string | null;
+  created_task?: Task | null;
+  tool_calls?: Array<Record<string, unknown>>;
+  tool_results?: Array<Record<string, unknown>>;
   suggestedActions?: string[];
+  success?: boolean;
 }
 
 export type StatusUpdateCallback = (statusText: string) => void;
@@ -18,33 +22,57 @@ export const aiService = {
    */
   async sendMessage(
     message: string,
-    onStatusUpdate?: StatusUpdateCallback
+    onStatusUpdate?: StatusUpdateCallback,
+    messageHistory?: Array<Record<string, unknown>>
   ): Promise<ChatResponse> {
     onStatusUpdate?.('Thinking...');
 
-    // First, try real backend POST /api/chat if running
+    // Call live backend POST /api/chat via apiClient with Firebase Bearer authentication
     try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message }),
-      });
+      const data: ChatResponsePayload = await apiClient.postChat(message, messageHistory);
 
-      if (response.ok) {
-        const data = await response.json();
-        return {
-          response: data.response || data.content,
-          tool_used: data.tool_used,
-          created_task: data.created_task,
-          suggestedActions: data.suggestedActions,
+      if (!data || typeof data.response !== 'string') {
+        throw {
+          status: 500,
+          message: 'Received an unexpected or malformed response from TaskMate server.',
         };
       }
-    } catch {
-      // Backend not running or offline, seamlessly handle via client-side agent
-    }
 
-    // High-quality local agent execution with realistic tool simulation and friendly responses
-    return this.processLocally(message, onStatusUpdate);
+      // Extract created task if returned by backend
+      let createdTask: Task | null = null;
+      if (data.created_task) {
+        createdTask = data.created_task as unknown as Task;
+      }
+
+      // Generate context-aware suggestions if not provided
+      let suggestedActions = data.suggestedActions;
+      if (!suggestedActions || suggestedActions.length === 0) {
+        if (data.tool_used?.includes('task')) {
+          suggestedActions = ['Show my pending tasks', 'Plan my day'];
+        } else if (data.tool_used?.includes('calc')) {
+          suggestedActions = ['Show my pending tasks', 'Create a study task'];
+        } else {
+          suggestedActions = [
+            'Create a task to study Python tomorrow',
+            'Show my pending tasks',
+            'Calculate 30 chapters over 6 days',
+          ];
+        }
+      }
+
+      return {
+        response: data.response,
+        tool_used: data.tool_used,
+        created_task: createdTask,
+        tool_calls: data.tool_calls || [],
+        tool_results: data.tool_results || [],
+        suggestedActions,
+        success: data.success,
+      };
+    } catch (err: unknown) {
+      // Propagate API, auth, validation, and network errors so caller handles them truthfully
+      throw err;
+    }
   },
 
   async processLocally(
@@ -64,7 +92,7 @@ export const aiService = {
       lower.includes('todo:')
     ) {
       onStatusUpdate?.('Creating your task...');
-      await new Promise((resolve) => setTimeout(resolve, 600));
+      await new Promise((resolve) => setTimeout(resolve, 350));
 
       // Extract task title
       let title = text
@@ -99,10 +127,9 @@ export const aiService = {
       if (!title) {
         title = 'New Task';
       }
-      // Capitalize first letter
       title = title.charAt(0).toUpperCase() + title.slice(1);
 
-      // Guess category
+      // Categorize
       let category = 'General';
       if (/study|read|learn|python|course|exam|chapter/i.test(title)) category = 'Study';
       else if (/work|slide|presentation|meeting|email|client|deploy|code/i.test(title)) category = 'Work';
@@ -111,7 +138,7 @@ export const aiService = {
 
       const created = await taskService.createTask({
         title,
-        description: `Created via TaskMate AI Assistant`,
+        description: 'Created via TaskMate AI Assistant',
         due_date: dueDate,
         priority,
         category,
@@ -124,8 +151,9 @@ export const aiService = {
         suggestedActions: [
           'Show my pending tasks',
           'Plan my day',
-          'Mark another task',
+          'Mark a task as completed',
         ],
+        success: true,
       };
     }
 
@@ -138,7 +166,7 @@ export const aiService = {
       lower.includes('what should i work on')
     ) {
       onStatusUpdate?.('Checking your tasks...');
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 300));
 
       const tasks = taskService.getTasks();
       const pendingTasks = tasks.filter((t) => t.status !== 'completed');
@@ -148,6 +176,7 @@ export const aiService = {
           response: "You don't have any pending tasks right now! You're all caught up. Would you like to create a new task?",
           tool_used: 'task_tool',
           suggestedActions: ['Create a task to study Python', 'Plan tomorrow'],
+          success: true,
         };
       }
 
@@ -170,13 +199,14 @@ export const aiService = {
           'Mark a task as completed',
           'Add a new task',
         ],
+        success: true,
       };
     }
 
     // 3. Planning the Day
     if (lower.includes('plan my day') || lower.includes('daily plan') || lower.includes('schedule')) {
       onStatusUpdate?.('Organizing your schedule...');
-      await new Promise((resolve) => setTimeout(resolve, 550));
+      await new Promise((resolve) => setTimeout(resolve, 350));
 
       const tasks = taskService.getTasks();
       const pending = tasks.filter((t) => t.status !== 'completed');
@@ -185,26 +215,26 @@ export const aiService = {
 
       return {
         response: `Here is a productive breakdown for your day:
-• **Morning Focus (Peak energy)**: Tackle high-priority items like ${high[0] ? `"${high[0].title}"` : 'your primary project'}.
+• **Morning Focus (Peak energy)**: Tackle high-priority items like ${high[0] ? `"${high[0].title}"` : 'your primary goal'}.
 • **Mid-day**: Handle scheduled syncs and administrative tasks ${medium[0] ? `(e.g., "${medium[0].title}")` : ''}.
 • **Afternoon**: Wrap up review items and plan for tomorrow.
 
 Would you like me to add a quick break reminder or adjust any task due dates?`,
         tool_used: 'planning_tool',
         suggestedActions: ['Show my pending tasks', 'Create a task', 'What should I work on today?'],
+        success: true,
       };
     }
 
-    // 4. Calculations (e.g. "Calculate 20 chapters over 5 days")
+    // 4. Calculations
     if (
       lower.includes('calculate') ||
       /\d+\s*(chapters?|pages?|tasks?|hours?)\s*(over|in|divided by)\s*\d+\s*(days?|weeks?)/i.test(lower) ||
       /\d+\s*[\+\-\*\/]\s*\d+/.test(lower)
     ) {
       onStatusUpdate?.('Calculating plan...');
-      await new Promise((resolve) => setTimeout(resolve, 450));
+      await new Promise((resolve) => setTimeout(resolve, 250));
 
-      // Try chapters over days pattern
       const chapterMatch = lower.match(/(\d+)\s*(?:chapters?|pages?|tasks?|items?)\s*(?:over|in|across)\s*(\d+)\s*(?:days?|weeks?)/i);
       if (chapterMatch) {
         const totalItems = parseInt(chapterMatch[1], 10);
@@ -217,30 +247,30 @@ Would you like me to add a quick break reminder or adjust any task due dates?`,
             `Create a task: Complete ${perUnit} chapters today`,
             'Show my pending tasks',
           ],
+          success: true,
         };
       }
 
-      // Simple math
+      // Safe arithmetic evaluator
       try {
         const mathClean = lower.replace(/calculate/i, '').replace(/[^0-9+\-*/().]/g, '');
         if (mathClean) {
-          // Safe evaluation of basic numbers and arithmetic
           const sanitized = mathClean.replace(/[^0-9+\-*/.]/g, '');
-          // Basic arithmetic evaluator
           const res = Function(`'use strict'; return (${sanitized})`)();
           return {
             response: `The calculation result is: **${res}**. Let me know if you want to apply this to a task budget or timeline!`,
             tool_used: 'calculator_tool',
+            success: true,
           };
         }
       } catch {
-        // Ignore math parse failure
+        // Fall through
       }
     }
 
-    // 5. Default conversational response
+    // 5. Default response
     onStatusUpdate?.('Thinking...');
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 300));
 
     return {
       response: `I'm here to keep your workload organized and manageable! You can ask me to:
@@ -255,6 +285,7 @@ What would you like to achieve right now?`,
         'Show my pending tasks',
         'Plan my day',
       ],
+      success: true,
     };
   },
 };

@@ -1,5 +1,6 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth, GoogleAuthProvider } from 'firebase/auth';
+import { getFirestore, Firestore } from 'firebase/firestore';
 
 /**
  * Client-side Firebase configuration loaded from Vite environment variables.
@@ -20,6 +21,9 @@ export const app: FirebaseApp =
 
 // Initialize Firebase Authentication service singleton
 export const auth: Auth = getAuth(app);
+
+// Initialize Cloud Firestore client singleton
+export const db: Firestore = getFirestore(app);
 
 // Configure Google OAuth provider
 export const googleProvider: GoogleAuthProvider = new GoogleAuthProvider();

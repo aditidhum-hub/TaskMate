@@ -8,9 +8,75 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Phase 10 — Checkpoint 10.1: Backend E2E Integration Test Suite:**
+  - Implemented `backend/tests/integration/test_e2e_flow.py` covering task creation, listing, calculation, completion, and multi-turn conversational scenarios.
+  - 6/6 integration tests passing; 152/152 total backend pytests passing; 0 ruff errors.
+- **Phase 10 — Checkpoint 10.2: Firestore Client-Side SDK Integration:**
+  - Integrated Cloud Firestore client singleton in `frontend/src/services/firebase.ts`.
+  - Implemented user-scoped Firestore operations in `frontend/src/services/taskService.ts` (`users/{uid}/tasks/{task_id}`).
+  - Added resilient offline/demo fallback to local storage cache.
+  - 10/10 frontend verification tests passing; 0 TypeScript errors.
+- **Phase 10 — Checkpoint 10.3: Live Chat API & UI State Synchronization:**
+  - Connected conversational chat in `aiService.ts` to `POST /api/chat` with Firebase Bearer token authentication via `apiClient.ts`.
+  - Implemented `applyAiToolEffects` in `AppContext.tsx` synchronizing AI task operations (`create_task`, `complete_task`, `update_task`, `delete_task`) directly into React state.
+  - Enforced deduplication to prevent duplicate tasks when processing `created_task`.
+  - Prevented duplicate Firestore writes by treating backend agent execution as authoritative and updating local storage cache.
+  - Enabled live reactivity for Kanban columns (*Pending*, *In Progress*, *Completed*) and Dashboard derived metrics without page refresh.
+  - Sanitized and safely handled HTTP 401, 422, 500, and network errors without crashing React or leaking stack traces.
+  - Added automated tests 11–18 in `frontend/src/tests/test_phase9_frontend.mjs` (18/18 total frontend tests passing).
+  - Production build (`npm run build`) and lint (`npm run lint`) clean with 0 errors.
+
+- **Phase 10 — Checkpoint 10.4: Google Colab End-to-End Validation Notebook:**
+  - Authored comprehensive validation notebook at `notebooks/07_end_to_end_validation.ipynb`.
+  - Implemented all 7 required sections:
+    1. Environment configuration (path handling, secure credential masking, testing environment).
+    2. FastAPI TestClient setup & route health/auth checks.
+    3. Scenario 1 (Creation): `"Create a high priority task to study Python tomorrow."` validating date-time resolution, task creation, high priority, pending status, and due date.
+    4. Scenario 2 (Query): `"Show my pending tasks."` validating status filtering and grounded list response.
+    5. Scenario 3 (Calculation): `"I have 30 chapters and 6 days. How many per day?"` validating AST calculator dispatch (`30 / 6 = 5`).
+    6. Scenario 4 (Completion): `"Mark task 'study Python' as completed."` validating task status mutation to completed.
+    7. Frontend Integration & State Synchronization Model validating dynamic state reactivity, deduplication, Kanban columns, and Dashboard metric recalculation mirroring `AppContext.tsx`.
+  - Verified 100% successful execution across all 7 code cells with assertions passing.
+
+- **Phase 10 — Checkpoint 10.5: Full Regression Testing, Build Verification & Documentation:**
+  - Executed full backend pytest regression suite: 152/152 passed with 0 failures across api, unit, agent, and integration suites.
+  - Verified backend linter with zero errors (`ruff check backend/`).
+  - Executed frontend automated test suite: 18/18 passed with 0 failures (`src/tests/test_phase9_frontend.mjs`).
+  - Verified frontend TypeScript and linter with zero errors (`tsc --noEmit`).
+  - Validated production build (`vite build` finished in ~5.28s, generating assets in `frontend/dist/`).
+  - Assessed end-to-end runtime environment: NVIDIA API live and operational; Cloud Firestore API in Google Cloud Console project `taskmate-d9f55` currently disabled (`403 SERVICE_DISABLED`), transparently documented and thoroughly backed by deterministic integration test coverage.
+  - Phase 10 officially marked COMPLETED across all master documentation records.
+
+- **Phase 11: Testing and Error Handling:**
+  - **Checkpoint 11.1 (Centralized Error Handling & Sanitization):** Implemented `backend/app/core/errors.py` with custom exception classes (`TaskMateError`, `NotFoundError`, `UnauthorizedError`, `ValidationError`, `ServiceUnavailableError`) and global exception handlers mounted in `main.py`. Ensures 0 internal stack traces, DB paths, or secrets leak in 500 errors. 8/8 API error tests passing.
+  - **Checkpoint 11.2 (Tool & Agent Boundary Conditions):** Added 23 unit boundary tests (`test_error_boundaries.py`) covering Calculator (division by zero, syntax errors, overflow, disallowed lookups), Date/Time (unrecognized/invalid dates), and Task Tool (non-existent task operations). Added 6 agent tests (`test_agent_error_handling.py`) verifying timeout handling, provider 500s, and truthful failure reporting.
+  - **Checkpoint 11.3 (Frontend Defensive Error Handling & Rollback):** Added 7 frontend tests (`test_phase11_error_handling.mjs`) verifying optimistic creation/update/move/delete rollbacks, AI chat input unlocking, raw HTML 502 error sanitization, and offline network handling. 25/25 total frontend tests passing.
+  - **Checkpoint 11.4 (E2E Error Resilience Suite):** Implemented 6 full-stack integration tests in `test_error_resilience.py` verifying system behavior under LLM timeout, auth rejection, division by zero, non-existent task IDs, and unexpected agent crashes.
+  - **Checkpoint 11.5 (Full Regression & Build Verification):** 195/195 backend pytests passing, 0 ruff errors, 25/25 frontend tests passing, 0 TypeScript errors, clean Vite production build.
+
 ### Planned
 
-- Phase 9: React frontend component alignment with production API contracts.
+- Phase 12: Security and Tenant Isolation Review.
+
+---
+
+## [0.13.0] — 2026-09-12
+
+### Added
+
+- **Phase 9: React Frontend (`frontend/src/`):**
+  - Implemented `KanbanBoard.tsx` providing an interactive 3-column workflow (*Pending*, *In Progress*, *Completed*) with real-time status shifting, task badges, and category/priority filter integration.
+  - Implemented `apiClient.ts` connecting the React frontend to FastAPI `/api/chat` and `/api/health` endpoints with dynamic Firebase ID token Bearer authentication and sanitized error handling.
+  - Defined canonical TypeScript domain and API models in `types/index.ts` (`Task`, `TaskPriority`, `TaskStatus`, `UserProfile`, `ChatMessage`, `NavView`, `TaskFilters`, `ProductivitySummary`, `KanbanColumn`, `ChatRequestPayload`, `ChatResponsePayload`, `ApiError`).
+  - Enhanced centralized state management in `AppContext.tsx` with optimistic UI updates, clean error rollback, canonical derived metrics, and `moveTaskStatus`.
+  - Added Kanban navigation route and view mode toggle in `Header.tsx`, `App.tsx`, and `TaskPanel.tsx`.
+  - Configured Vite dev server proxy in `vite.config.ts` routing `/api` and `/health` requests to `http://127.0.0.1:8000`.
+  - Created automated frontend verification suite in `src/tests/test_phase9_frontend.mjs` verifying summary calculations, optimistic mutations with rollback, Kanban state transitions, Bearer token injection, error mapping, and search/sort logic (8/8 passing).
+  - Validated frontend build (`npm run lint` and `npm run build` with 0 errors).
+  - Regression verified full backend test suite (146/146 pytests passing) and linter cleanliness (0 ruff errors).
+
 
 ---
 

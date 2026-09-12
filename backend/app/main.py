@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.app.api.routes_chat import router as chat_router
 from backend.app.api.routes_health import router as health_router
 from backend.app.core.config import get_settings
+from backend.app.core.errors import register_exception_handlers
 
 
 @asynccontextmanager
@@ -28,6 +29,9 @@ app = FastAPI(
     redoc_url="/redoc",
     openapi_url="/openapi.json",
 )
+
+# Register centralized exception sanitization handlers
+register_exception_handlers(app)
 
 # CORS Middleware Configuration
 app.add_middleware(
