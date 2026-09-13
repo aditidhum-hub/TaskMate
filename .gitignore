@@ -6,6 +6,13 @@ coverage/
 *.log
 .env*
 !.env.example
+!**/.env.example
+*.pem
+*.key
+*.p12
+*service-account*.json
+*adminsdk*.json
+credentials.json
 
 # Python
 __pycache__/

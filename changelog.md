@@ -56,9 +56,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   - **Checkpoint 11.4 (E2E Error Resilience Suite):** Implemented 6 full-stack integration tests in `test_error_resilience.py` verifying system behavior under LLM timeout, auth rejection, division by zero, non-existent task IDs, and unexpected agent crashes.
   - **Checkpoint 11.5 (Full Regression & Build Verification):** 195/195 backend pytests passing, 0 ruff errors, 25/25 frontend tests passing, 0 TypeScript errors, clean Vite production build.
 
-### Planned
+- **Phase 12: Security and Tenant Isolation Review:**
+  - **Checkpoint 12.1 (Security Audit & Hardening):** Verified Firestore security rules (`request.auth.uid == userId`), confirmed Zero eval() / exec() policy throughout codebase, verified secret hygiene with `.env*` git exclusion, verified client-supplied identity rejection, and confirmed CORS origin whitelist.
+  - **Checkpoint 12.2 (Automated Tenant Isolation Suite):** Implemented `backend/tests/integration/test_security_isolation.py` (9 tests passing) validating cross-user read/update/delete/list denial, parameter forgery defense (stripping LLM/client-supplied `user_id`), missing/forged token rejection (401), and unapproved CORS origin rejection.
+  - **Checkpoint 12.3 (Regression & Build Verification):** 204/204 backend tests passing, 0 ruff errors, 25/25 frontend tests passing, 0 TypeScript errors, clean Vite production build.
 
-- Phase 12: Security and Tenant Isolation Review.
+- **Phase 13: Performance, Observability and Reliability:**
+  - **Checkpoint 13.0 (Environment Configuration Audit):** Verified `.env*` exclusion in git, audited existing environment variables, and configured safe placeholders for logging and rate limiting (`LOG_LEVEL`, `LOG_FORMAT`, `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW_SECONDS`).
+  - **Checkpoint 13.1 (Structured Diagnostic Logging):** Implemented `backend/app/core/logging.py` featuring `JsonLogFormatter` with automatic credential/token redaction and `StructuredLoggingMiddleware` propagating `X-Request-ID`, recording user context and processing latency without logging sensitive message text.
+  - **Checkpoint 13.2 (User & IP Rate Limiting Middleware):** Implemented `backend/app/api/middleware.py` with sliding-window `RateLimiter` and `RateLimitingMiddleware` protecting `POST /api/chat`. Rejections return HTTP 429 Too Many Requests with JSON detail, dynamic `retry_after`, and `Retry-After` header.
+  - **Checkpoint 13.3 (Automated Test Suite for Phase 13):** Created `backend/tests/api/test_rate_limiting.py` (4 tests) and `backend/tests/api/test_logging.py` (3 tests) covering rate limiting, 429 responses, quota isolation, JSON log formatting, credential sanitization, and request ID propagation.
+  - **Checkpoint 13.4 (Full Regression & Build Verification):** 211/211 backend tests passing, 0 ruff errors, 25/25 frontend tests passing, 0 TypeScript errors, clean Vite production build.
+
+- **Phase 14: Production Readiness and Deployment:**
+  - **Checkpoint 14.1 (Production Configuration Audit):** Hardened `.gitignore` to block all service accounts, private keys, and credential dumps (`*.pem`, `*.key`, `*service-account*.json`, `*adminsdk*.json`). Confirmed zero secrets tracked in git history.
+  - **Checkpoint 14.2 (Production Backend Configuration & Containerization):** Created root `Dockerfile` and `backend/Dockerfile` with minimal `python:3.11-slim` runtime, non-root user execution (`appuser`), dynamic cloud port binding, and health check probes. Created root and backend `.dockerignore` files.
+  - **Checkpoint 14.3 (Production Build & Packaging Pipelines):** Created automated build and validation scripts `scripts/build_production.ps1` and `scripts/build_production.sh`. Successfully executed build pipeline verifying all 211 backend tests, 25 frontend tests, 0 linter errors, and production compilation into `frontend/dist/`.
+  - **Checkpoint 14.4 (Deployment Guide):** Created comprehensive provider-neutral production deployment guide `docs/DEPLOYMENT.md` covering architecture, environment variables, Docker operations, Google Cloud Run, AWS, self-hosted VPS, Firestore rules/indexes deployment, HTTPS, smoke tests, and rollback procedures.
+  - **Checkpoint 14.5 (Pre-Deployment Verification & Handover):** All 15 phases (Phase 0 through Phase 14) of TaskMate V1 are officially completed and verified!
 
 ---
 

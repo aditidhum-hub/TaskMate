@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     NVIDIA_BASE_URL: str = ""
     LLM_TIMEOUT: float = 30.0
 
+    # Observability & Rate Limiting Settings (Phase 13)
+    LOG_LEVEL: str = "INFO"
+    LOG_FORMAT: str = "json"
+    RATE_LIMIT_REQUESTS: int = 60
+    RATE_LIMIT_WINDOW_SECONDS: int = 60
+
     @property
     def effective_api_key(self) -> str:
         """Return the effective API key for the LLM service."""

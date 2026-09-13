@@ -6,10 +6,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from backend.app.api.middleware import RateLimitingMiddleware
 from backend.app.api.routes_chat import router as chat_router
 from backend.app.api.routes_health import router as health_router
 from backend.app.core.config import get_settings
 from backend.app.core.errors import register_exception_handlers
+from backend.app.core.logging import StructuredLoggingMiddleware, setup_logging
 
 
 @asynccontextmanager
@@ -19,6 +21,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 settings = get_settings()
+
+# Initialize structured diagnostic logging
+setup_logging(log_level=settings.LOG_LEVEL, log_format=settings.LOG_FORMAT)
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -33,7 +38,9 @@ app = FastAPI(
 # Register centralized exception sanitization handlers
 register_exception_handlers(app)
 
-# CORS Middleware Configuration
+# Mount Middleware (executed in reverse order: CORS -> RateLimiting -> Logging -> Handler)
+app.add_middleware(StructuredLoggingMiddleware)
+app.add_middleware(RateLimitingMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
