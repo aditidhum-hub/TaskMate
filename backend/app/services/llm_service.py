@@ -2,8 +2,9 @@
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, ClassVar
 
 import httpx
 
@@ -72,6 +73,8 @@ class LLMResponse:
 class LLMService:
     """Provider-agnostic service connecting to NVIDIA Nemotron / OpenAI-compatible API."""
 
+    _shared_client: ClassVar[httpx.Client | None] = None
+
     def __init__(
         self,
         settings: Settings | None = None,
@@ -111,13 +114,61 @@ class LLMService:
             "Authorization": f"Bearer {self.api_key.strip()}",
             "Content-Type": "application/json",
             "Accept": "application/json",
+            # NOTE: Do NOT set Connection: close here — it contradicts the
+            # keepalive pool and causes dead-socket reuse on subsequent requests.
         }
 
+    @classmethod
+    def get_shared_client(cls, timeout: float = 30.0) -> httpx.Client:
+        """Return or lazily initialize the shared connection-pooled HTTP client.
+
+        NOTE: This is intentionally kept for test injection compatibility, but
+        production code now uses _make_request_client() per request to avoid
+        dead-socket reuse with the NVIDIA API server.
+        """
+        if cls._shared_client is None or cls._shared_client.is_closed:
+            cls._shared_client = httpx.Client(
+                timeout=timeout,
+                limits=httpx.Limits(
+                    max_keepalive_connections=5,
+                    max_connections=10,
+                    keepalive_expiry=10.0,
+                ),
+            )
+        return cls._shared_client
+
+    @classmethod
+    def reset_shared_client(cls) -> None:
+        """Reset the shared client to clean up state on communication errors."""
+        if cls._shared_client is not None:
+            try:
+                cls._shared_client.close()
+            except httpx.HTTPError as close_err:
+                logger.debug("Error closing shared HTTP client: %s", close_err)
+            cls._shared_client = None
+
     def _get_client(self) -> httpx.Client:
-        """Return the active HTTP client."""
+        """Return the active HTTP client (custom override for tests only)."""
         if self._custom_client:
             return self._custom_client
-        return httpx.Client(timeout=self.timeout)
+        return self.get_shared_client(timeout=self.timeout)
+
+    def _make_fresh_client(self) -> httpx.Client:
+        """Create a brand-new httpx.Client for a single request.
+
+        Using a fresh client per request avoids all connection-pool state bugs
+        (dead sockets, WinError 10038, reset-by-peer) that occur when the NVIDIA
+        API closes a keepalive connection unexpectedly between requests.
+        """
+        return httpx.Client(
+            timeout=httpx.Timeout(
+                connect=10.0,     # Fail fast if we can't reach the server
+                read=self.timeout,  # Full timeout for model inference
+                write=10.0,
+                pool=5.0,
+            ),
+        )
+
 
     def chat_completion(
         self,
@@ -125,7 +176,7 @@ class LLMService:
         tools: list[dict[str, Any]] | None = None,
         tool_choice: str | dict[str, Any] = "auto",
         temperature: float = 0.2,
-        max_tokens: int = 1024,
+        max_tokens: int | None = None,
     ) -> LLMResponse:
         """Send a chat completion request to the OpenAI-compatible endpoint.
 
@@ -134,7 +185,7 @@ class LLMService:
             tools: Optional list of tool schemas.
             tool_choice: Tool selection policy ('auto', 'none', etc.).
             temperature: Sampling temperature.
-            max_tokens: Maximum tokens in response.
+            max_tokens: Maximum tokens in response. Defaults to LLM_MAX_TOKENS (512).
 
         Returns:
             LLMResponse: Structured response with content and parsed tool calls.
@@ -147,25 +198,53 @@ class LLMService:
         headers = self._get_headers()
         endpoint = f"{self.base_url}/chat/completions"
 
+        effective_max_tokens = (
+            max_tokens
+            if max_tokens is not None
+            else getattr(self.settings, "LLM_MAX_TOKENS", 512)
+        )
+
         payload: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": max_tokens,
+            "max_tokens": effective_max_tokens,
         }
 
         if tools:
+            # Do NOT send reasoning_budget when tools are active.
+            # reasoning_budget=0 combined with tool_choice="auto" causes the
+            # Nemotron model to hang or produce severely degraded latency (1–60s
+            # variance observed). The model needs reasoning tokens to decide
+            # which tool to call; suppressing them here contradicts tool-use mode.
             payload["tools"] = tools
             payload["tool_choice"] = tool_choice
+        else:
+            # reasoning_budget=0 is safe on non-tool turns (direct text synthesis).
+            # It suppresses chain-of-thought tokens, reducing latency ~3-5s -> ~1.5s.
+            reasoning_budget = getattr(self.settings, "LLM_REASONING_BUDGET", 0)
+            payload["reasoning_budget"] = reasoning_budget
 
-        client = self._get_client()
+        # Use a fresh client per request to avoid dead-socket reuse issues
+        # (WinError 10038, RemoteProtocolError) with the NVIDIA API's unpredictable
+        # keepalive behaviour. Tests can inject _custom_client to bypass this.
+        use_custom = self._custom_client is not None
         try:
-            response = client.post(endpoint, json=payload, headers=headers)
+            if use_custom:
+                response = self._custom_client.post(endpoint, json=payload, headers=headers)
+            else:
+                with self._make_fresh_client() as fresh_client:
+                    response = fresh_client.post(endpoint, json=payload, headers=headers)
         except httpx.TimeoutException as err:
-            logger.error("Timeout connecting to Nemotron endpoint (%s): %s", endpoint, err)
-            raise LLMTimeoutError("Nemotron request timed out. Please check network connectivity.") from err
+            logger.error(
+                "Timeout calling Nemotron (%s): %s",
+                endpoint, err,
+            )
+            raise LLMTimeoutError(
+                "Nemotron request timed out. Please try again."
+            ) from err
         except httpx.RequestError as err:
-            logger.error("HTTP request error connecting to Nemotron: %s", err)
+            logger.error("HTTP request error calling Nemotron: %s", err)
             raise LLMServiceError(f"Network error connecting to Nemotron: {err}") from err
 
         # Handle HTTP status codes
@@ -207,7 +286,11 @@ class LLMService:
         for tc in raw_tool_calls:
             tc_id = tc.get("id", "")
             func = tc.get("function", {})
-            func_name = func.get("name", "")
+            func_name = (func.get("name") or "").strip()
+            # Clean func_name from XML or thinking artifacts (e.g. "list_tasks\n</function" -> "list_tasks")
+            if func_name:
+                func_name = re.split(r"[\s<>\n/]+", func_name)[0].strip()
+
             raw_args = func.get("arguments", "{}")
 
             # Parse arguments JSON safely
@@ -215,12 +298,25 @@ class LLMService:
                 args_dict = raw_args
                 raw_str = json.dumps(raw_args)
             elif isinstance(raw_args, str):
-                raw_str = raw_args
+                raw_str = raw_args.strip()
+                # Clean any XML or closing tags trailing behind JSON
+                if "</" in raw_str:
+                    raw_str = raw_str.split("</")[0].strip()
                 try:
-                    args_dict = json.loads(raw_args) if raw_args.strip() else {}
-                except json.JSONDecodeError as err:
-                    logger.warning("Malformed tool arguments JSON from LLM: %s", err)
-                    args_dict = {}
+                    args_dict = json.loads(raw_str) if raw_str else {}
+                except json.JSONDecodeError:
+                    # Attempt to extract embedded JSON object if wrapped by text
+                    match = re.search(r"\{.*\}", raw_str, re.DOTALL)
+                    if match:
+                        try:
+                            args_dict = json.loads(match.group(0))
+                            raw_str = match.group(0)
+                        except json.JSONDecodeError as err:
+                            logger.warning("Malformed tool arguments JSON from LLM: %s", err)
+                            args_dict = {}
+                    else:
+                        logger.warning("Malformed tool arguments JSON from LLM: %s", raw_str)
+                        args_dict = {}
             else:
                 args_dict = {}
                 raw_str = str(raw_args)
@@ -388,8 +484,9 @@ class LLMService:
             })
 
         # Step 8-9: Send tool observations back to Nemotron for synthesis
+        # Pass tools=None to avoid redundant schema overhead on the synthesis turn.
         try:
-            llm_turn2 = self.chat_completion(messages=messages, tools=tools_schema)
+            llm_turn2 = self.chat_completion(messages=messages, tools=None)
             final_response = llm_turn2.content or ""
         except LLMServiceError as err:
             logger.warning("Nemotron synthesis turn failed: %s; falling back to tool result description", err)

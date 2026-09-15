@@ -557,3 +557,60 @@ def test_conversation_turn_unauthenticated():
     result = service.run_conversation_turn(user_id="", user_prompt="Hello")
     assert result["success"] is False
     assert "authentication required" in result["response"].lower()
+
+
+def test_xml_tool_name_and_arguments_sanitization(tool_registry: ToolRegistry):
+    """Verify tool names and arguments containing trailing XML or closing tags from LLM are sanitized."""
+    # LLM emits 'list_tasks\n</function' as tool name
+    res = tool_registry.execute_tool(
+        "list_tasks\n</function",
+        '{"status": "pending"}\n</function>',
+        user_id="user_alice",
+    )
+    assert res["success"] is True
+    assert "tasks" in res
+
+    # Dotted tool name: 'functions.create_task'
+    res2 = tool_registry.execute_tool(
+        "functions.create_task",
+        '{"title": "Test Dotted Name"}\n</tool_call>',
+        user_id="user_alice",
+    )
+    assert res2["success"] is True
+    assert res2["task"]["title"] == "Test Dotted Name"
+
+
+def test_firestore_disabled_fallback_isolation():
+    """Verify that when Firestore is disabled / unavailable, operations fallback to in-memory store cleanly."""
+    from backend.app.services.task_service import TaskService
+    from unittest.mock import MagicMock
+
+    # Clean up any pre-existing fallback state for these test-scoped user IDs
+    # to prevent cross-test pollution from the shared ClassVar dict.
+    for uid in ("user_iso_a", "user_iso_b"):
+        TaskService._fallback_store.pop(uid, None)
+
+    # Service with no Firestore connection simulation
+    service = TaskService(db=None)
+    # Monkeypatch _get_tasks_collection to raise Google API permission denied
+    mock_coll = MagicMock()
+    mock_coll.document.side_effect = RuntimeError("403 Cloud Firestore API disabled")
+    mock_coll.stream.side_effect = RuntimeError("403 Cloud Firestore API disabled")
+    service._get_tasks_collection = MagicMock(return_value=mock_coll)
+
+    created = service.create_task("user_iso_a", {"title": "Task For User A"})
+    assert created.title == "Task For User A"
+    assert created.user_id == "user_iso_a"
+
+    # Verify user_iso_b cannot see user_iso_a's tasks
+    b_tasks = service.list_tasks("user_iso_b")
+    assert len(b_tasks) == 0
+
+    # User A can see their task
+    a_tasks = service.list_tasks("user_iso_a")
+    assert len(a_tasks) == 1
+    assert a_tasks[0].id == created.id
+
+    # Teardown: clear test-scoped entries so subsequent tests start clean
+    for uid in ("user_iso_a", "user_iso_b"):
+        TaskService._fallback_store.pop(uid, None)

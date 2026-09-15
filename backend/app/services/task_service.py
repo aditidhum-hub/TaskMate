@@ -1,7 +1,7 @@
 """User-scoped Firestore Task Service for TaskMate."""
 
 import logging
-from typing import Any
+from typing import Any, ClassVar
 
 from backend.app.models.task import (
     TaskCreate,
@@ -22,6 +22,8 @@ class TaskService:
     All operations are strictly partitioned under `users/{user_id}/tasks/{task_id}`
     guaranteeing multi-tenant isolation and security.
     """
+
+    _fallback_store: ClassVar[dict[str, dict[str, dict[str, Any]]]] = {}
 
     def __init__(self, db: Any = None) -> None:
         """Initialize TaskService with an optional Firestore client.
@@ -83,27 +85,47 @@ class TaskService:
             raise TypeError("task_data must be a TaskCreate instance or dict.")
 
         now = generate_iso_timestamp()
-        tasks_ref = self._get_tasks_collection(valid_uid)
-        doc_ref = tasks_ref.document()
-        task_id = doc_ref.id
-
         data = task_create.model_dump()
         # Convert enum instances to their string values
         for key, value in data.items():
             if hasattr(value, "value"):
                 data[key] = value.value
 
-        payload = {
-            "id": task_id,
-            "user_id": valid_uid,
-            **data,
-            "created_at": now,
-            "updated_at": now,
-        }
+        try:
+            tasks_ref = self._get_tasks_collection(valid_uid)
+            doc_ref = tasks_ref.document()
+            task_id = doc_ref.id
 
-        doc_ref.set(payload)
-        logger.info("Task created successfully [task_id=%s, user_id=%s]", task_id, valid_uid)
-        return TaskResponse(**payload)
+            payload = {
+                "id": task_id,
+                "user_id": valid_uid,
+                **data,
+                "created_at": now,
+                "updated_at": now,
+            }
+
+            doc_ref.set(payload)
+            logger.info("Task created successfully [task_id=%s, user_id=%s]", task_id, valid_uid)
+            return TaskResponse(**payload)
+        except Exception as err:  # noqa: BLE001
+            logger.warning(
+                "Firestore create_task unavailable (%s); saving to user-scoped in-memory fallback.",
+                err,
+            )
+            import uuid
+
+            fallback_id = f"task_{uuid.uuid4().hex[:12]}"
+            fallback_payload = {
+                "id": fallback_id,
+                "user_id": valid_uid,
+                **data,
+                "created_at": now,
+                "updated_at": now,
+            }
+            if valid_uid not in TaskService._fallback_store:
+                TaskService._fallback_store[valid_uid] = {}
+            TaskService._fallback_store[valid_uid][fallback_id] = dict(fallback_payload)
+            return TaskResponse(**fallback_payload)
 
     def list_tasks(
         self,
@@ -121,26 +143,48 @@ class TaskService:
         Returns:
             list[TaskResponse]: Filtered list of user tasks.
         """
-        tasks_ref = self._get_tasks_collection(user_id)
-        query = tasks_ref
+        valid_uid = self._validate_user_id(user_id)
+        try:
+            tasks_ref = self._get_tasks_collection(valid_uid)
+            query = tasks_ref
 
-        if status is not None:
-            status_val = status.value if hasattr(status, "value") else str(status)
-            query = query.where("status", "==", status_val)
+            if status is not None:
+                status_val = status.value if hasattr(status, "value") else str(status)
+                query = query.where("status", "==", status_val)
 
-        if priority is not None:
-            priority_val = priority.value if hasattr(priority, "value") else str(priority)
-            query = query.where("priority", "==", priority_val)
+            if priority is not None:
+                priority_val = priority.value if hasattr(priority, "value") else str(priority)
+                query = query.where("priority", "==", priority_val)
 
-        docs = query.stream()
-        results: list[TaskResponse] = []
-        for doc in docs:
-            data = doc.to_dict() or {}
-            data.setdefault("id", doc.id)
-            data.setdefault("user_id", user_id)
-            results.append(TaskResponse(**data))
+            docs = query.stream()
+            results: list[TaskResponse] = []
+            for doc in docs:
+                data = doc.to_dict() or {}
+                data.setdefault("id", doc.id)
+                data.setdefault("user_id", valid_uid)
+                results.append(TaskResponse(**data))
 
-        return results
+            return results
+        except Exception as err:  # noqa: BLE001
+            logger.warning(
+                "Firestore list_tasks unavailable (%s); reading from user-scoped in-memory fallback.",
+                err,
+            )
+            user_tasks = TaskService._fallback_store.get(valid_uid, {})
+            status_val = (status.value if hasattr(status, "value") else str(status)) if status is not None else None
+            priority_val = (priority.value if hasattr(priority, "value") else str(priority)) if priority is not None else None
+
+            fallback_results: list[TaskResponse] = []
+            for task_dict in user_tasks.values():
+                if status_val is not None and task_dict.get("status") != status_val:
+                    continue
+                if priority_val is not None and task_dict.get("priority") != priority_val:
+                    continue
+                fallback_results.append(TaskResponse(**task_dict))
+
+            # Sort by created_at descending
+            fallback_results.sort(key=lambda t: t.created_at, reverse=True)
+            return fallback_results
 
     def get_task(self, user_id: str, task_id: str) -> TaskResponse | None:
         """Retrieve a specific task document by ID for the given user.
@@ -152,17 +196,29 @@ class TaskService:
         Returns:
             TaskResponse if found, None if the task does not exist.
         """
+        valid_uid = self._validate_user_id(user_id)
         valid_tid = self._validate_task_id(task_id)
-        doc_ref = self._get_tasks_collection(user_id).document(valid_tid)
-        doc = doc_ref.get()
 
-        if not doc.exists:
-            return None
+        try:
+            doc_ref = self._get_tasks_collection(valid_uid).document(valid_tid)
+            doc = doc_ref.get()
 
-        data = doc.to_dict() or {}
-        data.setdefault("id", doc.id)
-        data.setdefault("user_id", user_id)
-        return TaskResponse(**data)
+            if not doc.exists:
+                return None
+
+            data = doc.to_dict() or {}
+            data.setdefault("id", doc.id)
+            data.setdefault("user_id", valid_uid)
+            return TaskResponse(**data)
+        except Exception as err:  # noqa: BLE001
+            logger.warning(
+                "Firestore get_task unavailable (%s); reading from in-memory fallback.",
+                err,
+            )
+            task_dict = TaskService._fallback_store.get(valid_uid, {}).get(valid_tid)
+            if task_dict is None:
+                return None
+            return TaskResponse(**task_dict)
 
     def update_task(
         self,
@@ -180,6 +236,7 @@ class TaskService:
         Returns:
             TaskResponse with updated values, or None if task not found.
         """
+        valid_uid = self._validate_user_id(user_id)
         valid_tid = self._validate_task_id(task_id)
 
         if isinstance(update_data, dict):
@@ -190,17 +247,6 @@ class TaskService:
             raise TypeError("update_data must be a TaskUpdate instance or dict.")
 
         update_dict = update_obj.model_dump(exclude_unset=True)
-        doc_ref = self._get_tasks_collection(user_id).document(valid_tid)
-        doc = doc_ref.get()
-
-        if not doc.exists:
-            return None
-
-        current_data = doc.to_dict() or {}
-        if not update_dict:
-            current_data.setdefault("id", doc.id)
-            current_data.setdefault("user_id", user_id)
-            return TaskResponse(**current_data)
 
         # Convert enum instances to string values
         for key, value in update_dict.items():
@@ -208,15 +254,45 @@ class TaskService:
                 update_dict[key] = value.value
 
         now = generate_iso_timestamp()
-        update_dict["updated_at"] = now
 
-        doc_ref.update(update_dict)
-        current_data.update(update_dict)
-        current_data.setdefault("id", doc.id)
-        current_data.setdefault("user_id", user_id)
+        try:
+            doc_ref = self._get_tasks_collection(valid_uid).document(valid_tid)
+            doc = doc_ref.get()
 
-        logger.info("Task updated successfully [task_id=%s, user_id=%s]", valid_tid, user_id)
-        return TaskResponse(**current_data)
+            if not doc.exists:
+                return None
+
+            current_data = doc.to_dict() or {}
+            if not update_dict:
+                current_data.setdefault("id", doc.id)
+                current_data.setdefault("user_id", valid_uid)
+                return TaskResponse(**current_data)
+
+            update_dict["updated_at"] = now
+
+            doc_ref.update(update_dict)
+            current_data.update(update_dict)
+            current_data.setdefault("id", doc.id)
+            current_data.setdefault("user_id", valid_uid)
+
+            logger.info("Task updated successfully [task_id=%s, user_id=%s]", valid_tid, valid_uid)
+            return TaskResponse(**current_data)
+        except Exception as err:  # noqa: BLE001
+            logger.warning(
+                "Firestore update_task unavailable (%s); updating in in-memory fallback.",
+                err,
+            )
+            user_tasks = TaskService._fallback_store.get(valid_uid, {})
+            if valid_tid not in user_tasks:
+                return None
+
+            current_data = dict(user_tasks[valid_tid])
+            if update_dict:
+                update_dict["updated_at"] = now
+                current_data.update(update_dict)
+                user_tasks[valid_tid] = current_data
+
+            return TaskResponse(**current_data)
 
     def complete_task(self, user_id: str, task_id: str) -> TaskResponse | None:
         """Mark a task as completed.
@@ -244,13 +320,26 @@ class TaskService:
         Returns:
             bool: True if deleted, False if task did not exist.
         """
+        valid_uid = self._validate_user_id(user_id)
         valid_tid = self._validate_task_id(task_id)
-        doc_ref = self._get_tasks_collection(user_id).document(valid_tid)
-        doc = doc_ref.get()
 
-        if not doc.exists:
+        try:
+            doc_ref = self._get_tasks_collection(valid_uid).document(valid_tid)
+            doc = doc_ref.get()
+
+            if not doc.exists:
+                return False
+
+            doc_ref.delete()
+            logger.info("Task deleted successfully [task_id=%s, user_id=%s]", valid_tid, valid_uid)
+            return True
+        except Exception as err:  # noqa: BLE001
+            logger.warning(
+                "Firestore delete_task unavailable (%s); deleting from in-memory fallback.",
+                err,
+            )
+            user_tasks = TaskService._fallback_store.get(valid_uid, {})
+            if valid_tid in user_tasks:
+                del user_tasks[valid_tid]
+                return True
             return False
-
-        doc_ref.delete()
-        logger.info("Task deleted successfully [task_id=%s, user_id=%s]", valid_tid, user_id)
-        return True

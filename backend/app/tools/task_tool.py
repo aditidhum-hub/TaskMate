@@ -70,7 +70,7 @@ class TaskTool:
                 "task": created.model_dump(),
                 "message": f"Task '{created.title}' created successfully with ID '{created.id}'.",
             }
-        except (ValueError, TypeError, ValidationError) as err:
+        except (ValueError, TypeError, ValidationError) as err:  # noqa: BLE001
             logger.warning("Failed to create task via TaskTool: %s", err)
             return {"success": False, "error": str(err)}
 
@@ -102,7 +102,7 @@ class TaskTool:
                 "tasks": [t.model_dump() for t in tasks],
                 "count": len(tasks),
             }
-        except (ValueError, TypeError) as err:
+        except (ValueError, TypeError) as err:  # noqa: BLE001
             logger.warning("Failed to list tasks via TaskTool: %s", err)
             return {"success": False, "error": str(err)}
 
@@ -123,7 +123,7 @@ class TaskTool:
                     "error": f"Task with ID '{task_id}' was not found.",
                 }
             return {"success": True, "task": task.model_dump()}
-        except (ValueError, TypeError) as err:
+        except (ValueError, TypeError) as err:  # noqa: BLE001
             logger.warning("Failed to get task via TaskTool: %s", err)
             return {"success": False, "error": str(err)}
 
@@ -178,7 +178,7 @@ class TaskTool:
                 "task": updated.model_dump(),
                 "message": f"Task '{updated.title}' updated successfully.",
             }
-        except (ValueError, TypeError, ValidationError) as err:
+        except (ValueError, TypeError, ValidationError) as err:  # noqa: BLE001
             logger.warning("Failed to update task via TaskTool: %s", err)
             return {"success": False, "error": str(err)}
 
@@ -203,7 +203,7 @@ class TaskTool:
                 "task": task.model_dump(),
                 "message": f"Task '{task.title}' marked as completed.",
             }
-        except (ValueError, TypeError) as err:
+        except (ValueError, TypeError) as err:  # noqa: BLE001
             logger.warning("Failed to complete task via TaskTool: %s", err)
             return {"success": False, "error": str(err)}
 
@@ -228,7 +228,7 @@ class TaskTool:
                 "task_id": task_id,
                 "message": f"Task '{task_id}' deleted successfully.",
             }
-        except (ValueError, TypeError) as err:
+        except (ValueError, TypeError) as err:  # noqa: BLE001
             logger.warning("Failed to delete task via TaskTool: %s", err)
             return {"success": False, "error": str(err)}
 

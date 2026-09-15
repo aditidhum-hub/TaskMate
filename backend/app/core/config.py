@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     LLM_BASE_URL: str = "https://integrate.api.nvidia.com/v1"
     NVIDIA_BASE_URL: str = ""
     LLM_TIMEOUT: float = 30.0
+    LLM_REASONING_BUDGET: int = 0
+    LLM_MAX_TOKENS: int = 512
 
     # Observability & Rate Limiting Settings (Phase 13)
     LOG_LEVEL: str = "INFO"

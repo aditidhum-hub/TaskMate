@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from typing import Any
 
 from backend.app.agent.schemas import (
@@ -111,6 +112,14 @@ class ToolRegistry:
             }
 
         cleaned_tool_name = tool_name.strip()
+        if "\n" in cleaned_tool_name or "<" in cleaned_tool_name or "/" in cleaned_tool_name:
+            cleaned_tool_name = re.split(r"[\s<>\n/]+", cleaned_tool_name)[0].strip()
+
+        if cleaned_tool_name not in APPROVED_OPERATIONS and "." in cleaned_tool_name:
+            suffix = cleaned_tool_name.split(".")[-1].strip()
+            if suffix in APPROVED_OPERATIONS:
+                cleaned_tool_name = suffix
+
         if cleaned_tool_name not in APPROVED_OPERATIONS:
             return {
                 "success": False,
@@ -126,18 +135,31 @@ class ToolRegistry:
 
         # Parse string arguments if received as JSON string from LLM
         if isinstance(arguments, str):
+            cleaned_args = arguments.strip()
+            if "</" in cleaned_args:
+                cleaned_args = cleaned_args.split("</")[0].strip()
             try:
-                parsed_args = json.loads(arguments) if arguments.strip() else {}
+                parsed_args = json.loads(cleaned_args) if cleaned_args else {}
                 if not isinstance(parsed_args, dict):
                     return {
                         "success": False,
                         "error": f"Tool arguments must be a JSON object, got {type(parsed_args).__name__}.",
                     }
             except json.JSONDecodeError as err:
-                return {
-                    "success": False,
-                    "error": f"Malformed tool arguments JSON: {err}",
-                }
+                match = re.search(r"\{.*\}", cleaned_args, re.DOTALL)
+                if match:
+                    try:
+                        parsed_args = json.loads(match.group(0))
+                    except json.JSONDecodeError:
+                        return {
+                            "success": False,
+                            "error": f"Malformed tool arguments JSON: {err}",
+                        }
+                else:
+                    return {
+                        "success": False,
+                        "error": f"Malformed tool arguments JSON: {err}",
+                    }
         elif isinstance(arguments, dict):
             parsed_args = dict(arguments)
         else:
@@ -171,7 +193,7 @@ class ToolRegistry:
                 service = task_service or self.task_service
                 task_tool = TaskTool(user_id=user_id.strip(), task_service=service)
                 return task_tool.execute(cleaned_tool_name, **parsed_args)
-            except Exception:
+            except Exception as err:
                 logger.exception("Error executing TaskTool operation '%s'", cleaned_tool_name)
                 return {
                     "success": False,

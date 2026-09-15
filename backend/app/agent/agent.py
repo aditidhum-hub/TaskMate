@@ -140,11 +140,25 @@ class TaskMateAgent:
 
         trimmed_message = message.strip()
 
-        # Initialize conversation messages
+        # Initialize conversation messages with sanitized history
         messages: list[dict[str, Any]] = []
         if message_history:
-            # Copy existing history to avoid mutating caller's structure
-            messages = [dict(m) for m in message_history]
+            # Filter and sanitize history to prevent malformed turns or leaking state
+            for m in message_history:
+                role = m.get("role")
+                content = m.get("content")
+                # Preserve tool role messages — they carry tool observations from
+                # prior turns and must not be silently dropped or conversation
+                # continuity breaks when the caller passes back full history.
+                if role in ("user", "assistant", "system", "tool") and content is not None:
+                    entry: dict[str, Any] = {"role": role, "content": str(content).strip()}
+                    # Preserve tool_call_id for tool role messages (required by the API)
+                    if role == "tool" and "tool_call_id" in m:
+                        entry["tool_call_id"] = m["tool_call_id"]
+                    if role == "tool" and "name" in m:
+                        entry["name"] = m["name"]
+                    messages.append(entry)
+
             # Ensure system prompt is present at root
             if not messages or messages[0].get("role") != "system":
                 messages.insert(0, {"role": "system", "content": self.system_prompt})
@@ -164,11 +178,20 @@ class TaskMateAgent:
         for iteration in range(self.max_iterations):
             logger.debug("Agent loop iteration %d/%d for user %s", iteration + 1, self.max_iterations, user_id)
 
+            # Once a tool has been executed, synthesize final response without tools
+            # to eliminate redundant schema parsing overhead and latency
+            current_tools = None if executed_tool_calls else tool_schemas
+            current_choice = "none" if executed_tool_calls else "auto"
+            # Use the configured max_tokens for tool-selection turns (direct answers
+            # may be long). Use a fixed 384 for synthesis turns after tool execution.
+            turn_max_tokens = 384 if executed_tool_calls else getattr(self.settings, "LLM_MAX_TOKENS", 512)
+
             try:
                 llm_response: LLMResponse = self.llm_service.chat_completion(
                     messages=messages,
-                    tools=tool_schemas,
-                    tool_choice="auto",
+                    tools=current_tools,
+                    tool_choice=current_choice,
+                    max_tokens=turn_max_tokens,
                 )
             except LLMAuthenticationError as err:
                 logger.error("LLM authentication error: %s", err)
@@ -215,6 +238,11 @@ class TaskMateAgent:
             if not llm_response.has_tool_calls:
                 # No more tools needed — synthesized final response ready
                 sanitized_content = self._sanitize_response_content(llm_response.content)
+                # Guard: if sanitization stripped everything (e.g. pure whitespace or
+                # bare newline from reasoning_budget suppression), return a safe fallback
+                # rather than an empty string that would silently blank the UI.
+                if not sanitized_content:
+                    sanitized_content = "I'm ready to help. What would you like to do?"
                 messages.append({"role": "assistant", "content": sanitized_content})
                 return AgentResponse(
                     success=True,
